@@ -1,13 +1,12 @@
-import { schoolGuard } from "./policy.js";
+import { schoolGuard, coveredHost, validIPv4 } from "./policy.js";
 
-// This is intentionally a standalone, observe-only deployment.
-// Existing live Cloudflare routes should keep their existing Worker logic.
+// The public workers.dev address only serves diagnostics.
+// Real traffic reaches this Worker through a Service Binding from
+// vynalth-cloudflare-edge, never through a Custom Domain on a website origin.
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Without a zone route, a workers.dev Worker is not an origin proxy.
-    // Serve an explicit, harmless health endpoint instead of self-fetching.
     if (url.hostname.endsWith(".workers.dev")) {
       if (request.method === "GET" && url.pathname === "/health") {
         return new Response(
@@ -29,15 +28,31 @@ export default {
       }
       return new Response("Standalone Worker: use /health", {
         status: 404,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-store"
-        }
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
       });
     }
 
-    // For legitimate Cloudflare zone routes, pass on to the origin.
-    // Never install this over a route already owned by another Worker.
-    return schoolGuard(request, env, ctx, () => fetch(request));
+    // Deliberately require the internal gateway header and a known hostname.
+    // The edge Worker obtains this from the CF-Connecting-IP on the real
+    // incoming request, rather than passing an arbitrary browser-supplied
+    // X-Vynalth-Policy-Client-IP header.
+    const ip = request.headers.get("X-Vynalth-Policy-Client-IP");
+    if (!coveredHost(url.hostname) || !validIPv4(ip)) {
+      return new Response(null, { status: 204, headers: { "X-School-Policy": "allow" } });
+    }
+
+    const policyRequest = new Request(request.url, {
+      method: request.method,
+      headers: { "CF-Connecting-IP": ip }
+    });
+    return schoolGuard(
+      policyRequest,
+      env,
+      ctx,
+      () => new Response(null, {
+        status: 204,
+        headers: { "X-School-Policy": "allow", "Cache-Control": "no-store" }
+      })
+    );
   }
 };

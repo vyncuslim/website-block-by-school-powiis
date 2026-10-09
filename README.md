@@ -141,3 +141,11 @@ npm test
 ~~~
 
 See src/index.js, src/policy.js, test/policy.test.js and routes.example.jsonc.
+
+## Recommended live routing architecture
+
+**Seven public domains → vynalth-cloudflare-edge (existing routes) → SCHOOL_POLICY Service Binding → this policy Worker → SCHOOL_IP_KV.**
+
+The policy Worker intentionally has **no Custom Domains or zone Routes**. Attaching it directly to an apex hostname would replace an existing application origin. The existing Edge Worker owns the HTTP routes and delegates only the IP decision via the private Cloudflare Service Binding. A policy result of HTTP 204 means continue normal origin handling. HTTP 403 with `X-School-Policy: blocked` means block; unexpected responses and transient service-binding failures fail open to protect site availability.
+
+Ensure Cloudflare runs both Workers in the **same account**, and that the existing Edge Worker has a Service Binding named `SCHOOL_POLICY` pointing to service `website-block-by-school-powiis`. The Edge Worker's `wrangler.toml` is the source of truth for this binding and for the domain Routes. Do not add separate routes for the policy Worker. The existing Edge Worker adds `.si` routes to the five original zones, resulting in seven zone configurations. DNS must be proxied to Cloudflare for the routes to take effect.

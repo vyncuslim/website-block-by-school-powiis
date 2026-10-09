@@ -68,6 +68,7 @@ function deniedResponse() {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "private, no-store, max-age=0",
         "X-Robots-Tag": "noindex",
+        "X-School-Policy": "blocked",
         "Content-Security-Policy": "default-src 'none'; style-src 'none'; frame-ancestors 'none'; base-uri 'none'"
       }
     }
