@@ -31,12 +31,12 @@ The code recognizes apex hosts and their subdomains **if their Cloudflare routes
 
 The Worker registered in Cloudflare is **website-block-by-school-powiis**. The name in wrangler.jsonc **must exactly match** this Cloudflare Worker; a mismatch fails GitHub-connected Workers Builds.
 
-**As of the deploy configuration fix:** wrangler.jsonc has \`kv_namespaces: [{ "binding": "SCHOOL_IP_KV" }]\` (no placeholder ID). Recent Wrangler versions support automatic KV provisioning. On a successful dashboard-triggered Git deployment, Cloudflare can create and bind the KV namespace for this Worker. If a namespace already exists and you prefer to reuse it, place its actual namespace ID in the configuration instead.
+**As of the deploy configuration fix:** wrangler.jsonc has `kv_namespaces: [{ "binding": "SCHOOL_IP_KV" }]` (no placeholder ID). Recent Wrangler versions support automatic KV provisioning. On a successful dashboard-triggered Git deployment, Cloudflare can create and bind the KV namespace for this Worker. If a namespace already exists and you prefer to reuse it, place its actual namespace ID in the configuration instead.
 
-1. In Cloudflare Workers & Pages → website-block-by-school-powiis → **Deployments**, look for the build triggered by the latest GitHub commit. Build settings: no build command required, deploy command \`npx wrangler deploy\`, root directory \`/\`.
-2. After a successful deploy, check **Settings → Bindings** for the \`SCHOOL_IP_KV\` KV Namespace binding, and check **Storage & databases → KV** for the created namespace. If the build fails again, get the log from the lines **after** the \`wrangler\` banner; the beginning alone is not the error.
+1. In Cloudflare Workers & Pages → website-block-by-school-powiis → **Deployments**, look for the build triggered by the latest GitHub commit. Build settings: no build command required, deploy command `npx wrangler deploy`, root directory `/`.
+2. After a successful deploy, check **Settings → Bindings** for the `SCHOOL_IP_KV` KV Namespace binding, and check **Storage & databases → KV** for the created namespace. If the build fails again, get the log from the lines **after** the `wrangler` banner; the beginning alone is not the error.
 3. Cloudflare Git builds provision KV automatically, but the generated namespace ID is **not automatically committed back to GitHub**. Copy the real ID from the dashboard if you want to pin it in wrangler.jsonc for repeatable CLI maintenance. An ID is an identifier, **not an API credential**.
-4. Do not attach live routes to this Worker yet. The current project has an existing \`vynalth-cloudflare-edge\` Worker for some/all domains, and a route collision could override it. A successful deployment only makes the new standalone Worker available at its workers.dev address. It does **not** make all seven domains use this code.
+4. Do not attach live routes to this Worker yet. The current project has an existing `vynalth-cloudflare-edge` Worker for some/all domains, and a route collision could override it. A successful deployment only makes the new standalone Worker available at its workers.dev address. It does **not** make all seven domains use this code.
 
 ### Local development (optional)
 
@@ -55,7 +55,7 @@ npx wrangler deploy
 
 ### Integrate without replacing the existing edge Worker
 
-The exported \`schoolGuard()\` can be composed into your existing \`vynalth-cloudflare-edge\` entrypoint. This is the **recommended approach** if that Worker already owns a hostname/route; do not attach a competing Worker to the same route.
+The exported `schoolGuard()` can be composed into your existing `vynalth-cloudflare-edge` entrypoint. This is the **recommended approach** if that Worker already owns a hostname/route; do not attach a competing Worker to the same route.
 
 ~~~js
 import { schoolGuard } from "./school-policy.js";
@@ -88,7 +88,7 @@ Open Workers & Pages → website-block-by-school-powiis → **Settings → Bindi
 
 ### Manage KV using Wrangler CLI
 
-**First obtain the real KV namespace ID from Cloudflare dashboard.** In dashboard-based Git deployments, auto-created KV IDs are not synchronized back to GitHub. Replace \`<REAL_KV_NAMESPACE_ID>\` in commands below **locally**; do not use a placeholder value.
+**First obtain the real KV namespace ID from Cloudflare dashboard.** In dashboard-based Git deployments, auto-created KV IDs are not synchronized back to GitHub. Replace `<REAL_KV_NAMESPACE_ID>` in commands below **locally**; do not use a placeholder value.
 
 List observations:
 
