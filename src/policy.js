@@ -39,6 +39,24 @@ export function validIPv4(value) {
   );
 }
 
+// Normalize IPv6 consistently for exact-match KV lookups; accept public
+// unicast only. Never interpret IPv4/IPv6 CIDR prefixes as one IP.
+export function normalizePolicyIp(value) {
+  if (typeof value !== "string" || value.length > 45) return null;
+  if (validIPv4(value)) return value;
+  if (!value.includes(":") || !/^[a-f0-9:.]+$/i.test(value)) return null;
+  try {
+    const host = new URL("https://[" + value + "]/").hostname;
+    if (!host.startsWith("[") || !host.endsWith("]")) return null;
+    const normalized = host.slice(1, -1).toLowerCase();
+    if (!/^[23][a-f0-9]{3}:/.test(normalized)) return null;
+    if (normalized.startsWith("2001:db8:")) return null;
+    // Cloudflare's cross-zone Worker identity is not an actual visitor IP.
+    if (normalized === "2a06:98c0:3600::103") return null;
+    return normalized;
+  } catch { return null; }
+}
+
 async function recordCandidate(kv, ip) {
   const key = "observed:" + ip;
   try {
@@ -95,8 +113,8 @@ export async function schoolGuard(request, env, ctx, next) {
 
   // Trusted only when set by Cloudflare on an incoming proxied edge request.
   // Never read client-supplied X-Forwarded-For for policy decisions.
-  const ip = request.headers.get("CF-Connecting-IP");
-  if (!validIPv4(ip)) return next();
+  const ip = normalizePolicyIp(request.headers.get("CF-Connecting-IP"));
+  if (!ip) return next();
 
   const kv = env && env.SCHOOL_IP_KV;
 
