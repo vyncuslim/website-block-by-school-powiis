@@ -134,3 +134,101 @@ test("health and internal protocol remain unchanged", async () => {
   );
   assert.equal(internal.status, 204);
 });
+
+
+test("real public IPv6 addresses are accepted and retained as IPv6", async () => {
+  const kv = kvFixture();
+  const response = await post(kv, {
+    headers: { "CF-Connecting-IP": "2606:4700:4700::1111" }
+  });
+  assert.equal(response.status, 201);
+  assert.equal(kv.writes.length, 1);
+  assert.equal(kv.writes[0].key, "student-report:2606:4700:4700::1111");
+  const record = JSON.parse(kv.writes[0].value);
+  assert.equal(record.ipFamily, "ipv6");
+  assert.equal(record.reviewStatus, "pending-unverified");
+  assert.equal(kv.records.has("blocked:2606:4700:4700::1111"), false);
+});
+
+test("Cloudflare Pseudo IPv4 overwrite uses original IPv6, not synthetic Class E", async () => {
+  const kv = kvFixture();
+  const response = await post(kv, {
+    headers: {
+      "CF-Connecting-IP": "240.16.0.1",
+      "CF-Connecting-IPv6": "2400:cb00::b"
+    }
+  });
+  assert.equal(response.status, 201);
+  assert.equal(kv.writes[0].key, "student-report:2400:cb00::b");
+  assert.equal(JSON.parse(kv.writes[0].value).ipFamily, "ipv6");
+});
+
+test("do not trust client-supplied IPv6 override when real IPv4 is present", async () => {
+  const kv = kvFixture();
+  const response = await post(kv, {
+    headers: {
+      "CF-Connecting-IP": publicIp,
+      "CF-Connecting-IPv6": "2606:4700:4700::9999"
+    }
+  });
+  assert.equal(response.status, 201);
+  assert.equal(kv.writes[0].key, "student-report:" + publicIp);
+});
+
+test("missing real IP never falls back to spoofable X-Forwarded-For", async () => {
+  const kv = kvFixture();
+  const response = await post(kv, {
+    headers: {
+      "CF-Connecting-IP": "",
+      "X-Forwarded-For": publicIp
+    }
+  });
+  assert.equal(response.status, 422);
+  const body = await response.json();
+  assert.equal(body.error, "PUBLIC_IP_UNAVAILABLE");
+  assert.equal(body.reason, "cf_header_missing");
+  assert.equal(kv.writes.length, 0);
+});
+
+test("diagnostics never expose the visitor public IP", async () => {
+  const kv = kvFixture();
+  const response = await invoke({
+    path: "/ip-status",
+    headers: { "CF-Connecting-IP": "2606:4700:4700::1111" },
+    kv
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body, {
+    ok: true, publicIpAvailable: true, family: "ipv6", reason: null
+  });
+  assert.doesNotMatch(JSON.stringify(body), /2606:4700/);
+  assert.equal(kv.writes.length, 0);
+});
+
+test("diagnostics flag missing CF header without writing to KV", async () => {
+  const kv = kvFixture();
+  const response = await invoke({
+    path: "/ip-status", headers: { "CF-Connecting-IP": "" }, kv
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true, publicIpAvailable: false, family: null,
+    reason: "cf_header_missing"
+  });
+  assert.equal(kv.writes.length, 0);
+});
+
+test("reserved and cross-zone Worker synthetic IPv6 cannot become candidates", async () => {
+  for (const source of [
+    "::1", "fe80::1", "fc00::1", "2001:db8::1",
+    "2a06:98c0:3600::103", "2606:4700:::1"
+  ]) {
+    const kv = kvFixture();
+    const response = await post(kv, {
+      headers: { "CF-Connecting-IP": source }
+    });
+    assert.equal(response.status, 422, source);
+    assert.equal(kv.writes.length, 0, source);
+  }
+});
