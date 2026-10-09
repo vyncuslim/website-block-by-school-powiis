@@ -8,12 +8,11 @@
   "vars": {
     "MODE": "observe"
   },
-  // Wrangler v4 automatic provisioning:
-  // On successful Cloudflare Git deployment, create and bind this KV.
-  // Do not set a placeholder ID; pin a real ID only after provisioning.
+  // Pin the existing Cloudflare production KV namespace to prevent redeploy drift.
   "kv_namespaces": [
     {
-      "binding": "SCHOOL_IP_KV"
+      "binding": "SCHOOL_IP_KV",
+      "id": "afbc03d02494467e8f39b63f755de44d"
     }
   ]
 }
