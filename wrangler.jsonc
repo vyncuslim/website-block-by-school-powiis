@@ -1,19 +1,19 @@
 {
-  "name": "powiis-candidate-egress-policy",
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "website-block-by-school-powiis",
   "main": "src/index.js",
   "compatibility_date": "2026-10-09",
   "workers_dev": true,
-  // OBSERVE is intentionally the production default. No automatic blocking.
+  // Observe only by default. No live website routes are configured.
   "vars": {
     "MODE": "observe"
   },
+  // Wrangler v4 automatic provisioning:
+  // On successful Cloudflare Git deployment, create and bind this KV.
+  // Do not set a placeholder ID; pin a real ID only after provisioning.
   "kv_namespaces": [
     {
-      "binding": "SCHOOL_IP_KV",
-      "id": "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+      "binding": "SCHOOL_IP_KV"
     }
   ]
-  // No routes on purpose: avoid replacing vynalth-cloudflare-edge.
-  // After checking existing routes, integrate schoolGuard with the existing
-  // Worker OR deliberately attach standalone routes where no Worker conflicts.
 }
