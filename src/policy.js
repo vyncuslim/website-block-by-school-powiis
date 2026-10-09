@@ -57,6 +57,41 @@ export function normalizePolicyIp(value) {
   } catch { return null; }
 }
 
+// Admin-controlled runtime state. A saved disabled state stays disabled.
+// Enabled states expire after at most one hour even if the KV item remains.
+// KV is eventually consistent, so the control is not an instant/global switch.
+export const ENFORCEMENT_KEY = "policy:runtime-enforcement-v1";
+export const MAX_ENFORCEMENT_SECONDS = 3600;
+
+export async function runtimeEnforcement(kv, envMode = "observe") {
+  let configured = null;
+  if (kv && typeof kv.get === "function") {
+    try {
+      const raw = await kv.get(ENFORCEMENT_KEY);
+      if (raw !== null && raw !== undefined) {
+        configured = JSON.parse(raw);
+        if (!configured || typeof configured.enabled !== "boolean") {
+          return { enabled: false, source: "invalid-control", expiresAt: null };
+        }
+        const expires = Number(configured.expiresAtMs);
+        const enabled = configured.enabled === true &&
+          Number.isFinite(expires) && expires > Date.now() &&
+          expires <= Date.now() + MAX_ENFORCEMENT_SECONDS * 1000;
+        return {
+          enabled,
+          source: enabled ? "admin-runtime" : (configured.enabled ? "expired" : "admin-disabled"),
+          expiresAt: configured.expiresAt || null
+        };
+      }
+    } catch {
+      // On an unavailable or malformed KV control, fail open rather than
+      // unexpectedly blocking public websites.
+      return { enabled: false, source: "kv-unavailable", expiresAt: null };
+    }
+  }
+  return { enabled: envMode === "enforce", source: "environment-default", expiresAt: null };
+}
+
 async function recordCandidate(kv, ip) {
   const key = "observed:" + ip;
   try {
@@ -129,8 +164,11 @@ export async function schoolGuard(request, env, ctx, next) {
     ctx.waitUntil(recordCandidate(kv, ip));
   }
 
-  // Safe-by-default. The unverified candidate set does not trigger a block.
-  if (!env || env.MODE !== "enforce" || !kv) return next();
+  // Runtime admin control takes precedence over the legacy MODE environment
+  // variable, including an explicit emergency OFF state.
+  if (!kv) return next();
+  const control = await runtimeEnforcement(kv, env?.MODE);
+  if (!control.enabled) return next();
 
   try {
     // Manually managed keys only; no automatic block on observation.
