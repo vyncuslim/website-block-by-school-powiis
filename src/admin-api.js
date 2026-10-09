@@ -178,7 +178,7 @@ export async function adminApi(request,env,url){
   });
   if(endpoint==="list"&&request.method==="GET"){
     const c=url.searchParams.get("cursor");
-    if(c&&(c.length>1024||!/^[A-Za-z0-9_-]+$/.test(c)))return json(400,{error:"INVALID_CURSOR"});
+    if(c&&c.length>1024)return json(400,{error:"INVALID_CURSOR"});
     try{
       const opts={prefix:"blocked:",limit:50};
       if(c)opts.cursor=c;
