@@ -1,0 +1,22 @@
+{
+  // REFERENCE ONLY: DO NOT DEPLOY THIS CONFIG DIRECTLY.
+  // The current account has an existing vynalth-cloudflare-edge Worker.
+  // Inspect current routes; a competing route can override existing logic.
+  // Wildcard routes can affect API/mail/other subdomains; scope carefully.
+  "routes": [
+    { "pattern": "powiismunc.com/*", "zone_name": "powiismunc.com" },
+    { "pattern": "*.powiismunc.com/*", "zone_name": "powiismunc.com" },
+    { "pattern": "sleepsomno.com/*", "zone_name": "sleepsomno.com" },
+    { "pattern": "*.sleepsomno.com/*", "zone_name": "sleepsomno.com" },
+    { "pattern": "vitamindai.online/*", "zone_name": "vitamindai.online" },
+    { "pattern": "*.vitamindai.online/*", "zone_name": "vitamindai.online" },
+    { "pattern": "vynalthai.com/*", "zone_name": "vynalthai.com" },
+    { "pattern": "*.vynalthai.com/*", "zone_name": "vynalthai.com" },
+    { "pattern": "vynalthai.si/*", "zone_name": "vynalthai.si" },
+    { "pattern": "*.vynalthai.si/*", "zone_name": "vynalthai.si" },
+    { "pattern": "vyncuslim.com/*", "zone_name": "vyncuslim.com" },
+    { "pattern": "*.vyncuslim.com/*", "zone_name": "vyncuslim.com" },
+    { "pattern": "vyncuslim.si/*", "zone_name": "vyncuslim.si" },
+    { "pattern": "*.vyncuslim.si/*", "zone_name": "vyncuslim.si" }
+  ]
+}

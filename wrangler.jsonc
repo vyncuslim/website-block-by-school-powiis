@@ -1,0 +1,19 @@
+{
+  "name": "powiis-candidate-egress-policy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-09",
+  "workers_dev": true,
+  // OBSERVE is intentionally the production default. No automatic blocking.
+  "vars": {
+    "MODE": "observe"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SCHOOL_IP_KV",
+      "id": "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+    }
+  ]
+  // No routes on purpose: avoid replacing vynalth-cloudflare-edge.
+  // After checking existing routes, integrate schoolGuard with the existing
+  // Worker OR deliberately attach standalone routes where no Worker conflicts.
+}
