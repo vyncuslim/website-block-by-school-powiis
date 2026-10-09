@@ -188,3 +188,50 @@ If `cf_header_missing`, inspect Cloudflare's **Remove visitor IP headers** Manag
 
 The submit endpoint does **not** create `blocked:IP` keys. The separate internal policy service currently applies restrictions only to manually confirmed IPv4 entries with MODE=enforce; recording an IPv6 report does not automatically enable IPv6 access restrictions.
 
+
+
+## Private IP Management: `/admin/ip`
+
+**Admin URL:** https://website-block-by-school-powiis.ongyuze1401.workers.dev/admin/ip
+
+The Worker now provides a black, responsive owner dashboard with:
+- Password sign-in (Cloudflare secret; not embedded in the source or browser).
+- Short-lived, HMAC-signed (20-minute) `__Host-` Secure/HttpOnly/SameSite=Strict cookie and per-session CSRF checks.
+- View the current connection's public IPv4 or IPv6 from Cloudflare's `CF-Connecting-IP` (with Pseudo IPv4 support where supplied).
+- Add the **current connection's exact public IP** or an independently verified, manually entered **single** global IPv4 or IPv6.
+- Confirm the impact of a shared IP, assign 1, 6, or 12 hours of TTL; store `blocked:<IP>` with metadata in `SCHOOL_IP_KV`.
+- Show existing `blocked:` records and delete selected entries. KV state is eventually consistent. A separate Cloudflare WAF IP List or rule is **not** altered by this dashboard.
+- Password brute-force throttling via KV; this is supplementary only because Workers KV is eventually consistent. **Apply a Cloudflare Access policy with MFA and rate limiting** for better protection.
+- Default **MODE=observe** remains unchanged. The UI explicitly says that adding to KV does **not** establish live blocking.
+
+### Required Cloudflare Secrets (do not commit or chat the values)
+
+Cloudflare Dashboard → Workers & Pages → `website-block-by-school-powiis` → **Settings → Variables and Secrets → Add → Secret**. Create:
+
+1. `ADMIN_IP_PASSWORD`: your chosen administrator password. The Worker does **not** use a hardcoded or default password. Select a unique, strong password, preferably a fresh 20+ character passphrase.
+2. `ADMIN_IP_SESSION_SECRET`: an **independent**, cryptographically random 32+ character secret (do not reuse the admin password or any WAF/API token). Store it only as a Secret.
+
+Leave `SCHOOL_IP_KV` bound to the existing production KV namespace. Deploy the latest code and secret changes, then log in at `/admin/ip`. Until **both** secrets are present, admin API returns `503 ADMIN_NOT_CONFIGURED` and does not permit login. The public students' opt-in report at `/block-ip` and `/health` remain separate.
+
+### Enforcement prerequisites — read before expecting 403
+
+Writing a `blocked:<IP>` KV record only stores a manual decision. HTTP 403 occurs **only when all conditions are true**:
+
+1. Policy Worker has `MODE=enforce` in its actual Cloudflare production environment.
+2. Each website actually routes through the correct `vynalth-cloudflare-edge` Worker; its live `SCHOOL_POLICY` Service Binding is connected and active.
+3. The request's Cloudflare-supplied client address matches a currently active `blocked:` key; it may be shared by a school's staff, guests and students.
+4. The browser does not reach the origin directly or use a route that bypasses Cloudflare entirely.
+
+Cloudflare WAF rules and account IP Lists are **separate mechanisms**. This management page does not mutate those lists or install WAF rules. The UI reports enforcement as **unverified** even if the policy itself is set to `enforce`, because this Worker cannot prove that all seven external zones are correctly routed.
+
+### Local verification
+
+```bash
+npm install
+npm test
+node --check src/admin-api.js
+node --check src/admin-page.js
+```
+
+Regression coverage includes unauthorized access, secret configuration missing, cookie signing, Origin/CSRF enforcement, login throttling, current/manual exact IPv4/IPv6, KV TTL, list/delete, and observe/enforce policy behavior. Do not send real administrator passwords to test logs.
+
