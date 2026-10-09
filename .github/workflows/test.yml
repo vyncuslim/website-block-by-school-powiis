@@ -1,0 +1,23 @@
+name: Node policy tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: JavaScript syntax
+        run: |
+          node --check src/policy.js
+          node --check src/index.js
+      - name: Run policy unit tests
+        run: node --test
