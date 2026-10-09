@@ -173,3 +173,18 @@ node --test test/student-report.test.js
 npm test
 ```
 
+
+
+### /block-ip public-IP error diagnostics
+
+The public reporting page supports Cloudflare-observed globally routable IPv4 **and IPv6**. Cloudflare may deliver IPv6 to the Worker directly. If the Cloudflare Pseudo IPv4 configuration overwrites CF-Connecting-IP with a synthetic Class E IPv4, the page uses CF-Connecting-IPv6 for the real IPv6 address instead. **Do not use X-Forwarded-For, X-Real-IP or user input as substitute evidence**.
+
+If a visitor receives `PUBLIC_IP_UNAVAILABLE`, open `https://website-block-by-school-powiis.ongyuze1401.workers.dev/ip-status`. This GET response never includes the visitor IP, only:
+- `publicIpAvailable: true` and `family: "ipv4" / "ipv6"` when valid.
+- `reason: "cf_header_missing"` if Cloudflare did not supply CF-Connecting-IP.
+- `reason: "nonpublic_or_unsupported"` if it was reserved, synthetic without original IPv6, or an internal cross-zone Worker IP.
+
+If `cf_header_missing`, inspect Cloudflare's **Remove visitor IP headers** Managed Transform, Workers subrequest chain, and placement of the public route; correct the server-side configuration, not the user's browser. Never make an unauthorized request to obtain another person's IP or accept browser-submitted IP claims. The `/ip-status` endpoint has no write permission and its responses are no-store.
+
+The submit endpoint does **not** create `blocked:IP` keys. The separate internal policy service currently applies restrictions only to manually confirmed IPv4 entries with MODE=enforce; recording an IPv6 report does not automatically enable IPv6 access restrictions.
+
