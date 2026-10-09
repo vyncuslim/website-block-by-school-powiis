@@ -19,6 +19,7 @@ test("workers.dev /health reports KV binding, does not log IPs", async () => {
   assert.deepEqual(data, {
     ok: true,
     service: "website-block-by-school-powiis",
+    policyProtocol: "internal-204-v1",
     mode: "observe",
     kvBound: true
   });

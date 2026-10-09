@@ -13,6 +13,7 @@ export default {
           JSON.stringify({
             ok: true,
             service: "website-block-by-school-powiis",
+            policyProtocol: "internal-204-v1",
             mode: env?.MODE === "enforce" ? "enforce" : "observe",
             kvBound: typeof env?.SCHOOL_IP_KV?.get === "function"
           }),
