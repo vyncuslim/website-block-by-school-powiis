@@ -1,4 +1,4 @@
-import { studentIpReport } from "./student-report.js";
+import { studentIpReport, ipStatus } from "./student-report.js";
 import { schoolGuard, coveredHost, validIPv4 } from "./policy.js";
 
 // The public workers.dev address only serves diagnostics.
@@ -27,6 +27,10 @@ export default {
             }
           }
         );
+      }
+      if (url.pathname === "/ip-status") {
+        // Read-only diagnostics: IP family and availability, never the address.
+        return ipStatus(request);
       }
       if (url.pathname === "/block-ip") {
         // Consent-based reporting, NOT a public write to the blocklist.
