@@ -235,3 +235,24 @@ node --check src/admin-page.js
 
 Regression coverage includes unauthorized access, secret configuration missing, cookie signing, Origin/CSRF enforcement, login throttling, current/manual exact IPv4/IPv6, KV TTL, list/delete, and observe/enforce policy behavior. Do not send real administrator passwords to test logs.
 
+
+
+## Live enforcement toggle in /admin/ip
+
+The owner dashboard has a separate **Live Enforcement** section with:
+- **Enable blocklist checks for 1 hour** — requires a valid owner login, same-origin + CSRF, separate confirmation of shared-IP impact, confirmation that Edge routes were verified, and typing `ENABLE`.
+- **Emergency OFF** — authenticated CSRF-protected action that persists as disabled and does not delete the `blocked:` keys.
+- **Refresh policy status** — reports the Policy Worker's real runtime flag and expiry, but reports live Edge routing and 7-domain coverage as **unverified**, never as a guaranteed success.
+
+The runtime control is stored in existing `SCHOOL_IP_KV` at `policy:runtime-enforcement-v1`. **No password or API token is added to GitHub.** The enabled record has a *logical* expiry of at most 60 minutes. It remains stored so, after expiry, it evaluates to OFF even if a legacy Cloudflare `MODE=enforce` variable is present. Explicit OFF records persist. On KV errors, policy decisions fail open to preserve public site availability. Cloudflare KV is eventually consistent; do not call this an instantaneous kill switch.
+
+This controls **policy decisions**, not Cloudflare WAF rules. A site is actually blocked only if all of these are also true:
+1. The actual site request passes through the production `vynalth-cloudflare-edge` Worker.
+2. That Worker has `SCHOOL_POLICY` Service Binding and `SCHOOL_POLICY_ENABLED=true` (when running the security integration branch).
+3. The Policy Worker is deployed with this runtime enforcement code and correct `SCHOOL_IP_KV` binding.
+4. An **independently verified** exact visitor IP is present in KV as a non-expired `blocked:<IP>` key.
+5. No alternate route bypasses the Cloudflare Worker. Cloudflare WAF and IP List rules, if present, remain independent.
+
+**Rollout dependency:** the integration for seven zones is in the separate Edge repository's draft PR #3, including the proposed `SCHOOL_POLICY_ENABLED=true` flag, but PR state/deploy checks and actual production routing must be verified first. The new control does not silently merge or deploy that branch.
+
+Test with a specifically authorized, low-risk address for 1 hour, first in observe/off, then ON; confirm a 403 `X-School-Policy: blocked` on each intended domain and successful access from an address not on the list. Use **Emergency OFF** and confirm requests recover. Shared school IPs must not be inferred from a self-reported student checkbox alone. Since the admin password was previously transmitted in chat, rotate it before granting production enforcement capability, and strongly prefer Cloudflare Access with MFA before exposing production security controls.
