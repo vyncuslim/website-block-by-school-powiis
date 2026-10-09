@@ -1,4 +1,4 @@
-import { normalizePolicyIp } from "./policy.js";
+import { normalizePolicyIp, runtimeEnforcement, ENFORCEMENT_KEY, MAX_ENFORCEMENT_SECONDS } from "./policy.js";
 
 const COOKIE="__Host-vynalth-ip-admin";
 const COOKIE_LIFE=1200;
@@ -176,6 +176,18 @@ export async function adminApi(request,env,url){
     mode:mode(env),edgeVerified:false,
     note:"KV blocklist changes require live MODE=enforce and verified Edge Service Binding on all target websites."
   });
+  if(endpoint==="enforcement"&&request.method==="GET"){
+    const state=await runtimeEnforcement(kv,env.MODE);
+    return json(200,{
+      enabled:state.enabled,
+      source:state.source,
+      expiresAt:state.expiresAt,
+      appliesTo:"Policy Worker decisions on covered domains that actually call this service",
+      edgeVerified:false,
+      routeVerified:false,
+      warning:"Cloudflare Edge routes and SCHOOL_POLICY_ENABLED must be verified independently."
+    });
+  }
   if(endpoint==="list"&&request.method==="GET"){
     const c=url.searchParams.get("cursor");
     if(c&&c.length>1024)return json(400,{error:"INVALID_CURSOR"});
@@ -200,6 +212,50 @@ export async function adminApi(request,env,url){
   }
   const input=await bodyJson(request);
   if(!input)return json(400,{error:"INVALID_JSON"});
+  if(endpoint==="enforcement"){
+    if(typeof input.enabled!=="boolean")return json(400,{error:"BOOLEAN_ENABLED_REQUIRED"});
+    // A destructive security policy change needs separate, explicit
+    // confirmation in addition to the existing owner cookie + CSRF token.
+    if(input.enabled){
+      if(input.confirmSharedIpImpact!==true||
+         input.confirmEdgePrerequisites!==true||
+         input.confirmationText!=="ENABLE") {
+        return json(400,{error:"CONFIRMATION_REQUIRED"});
+      }
+      const now=Date.now(),expiresMs=now+MAX_ENFORCEMENT_SECONDS*1000;
+      const record={
+        enabled:true,updatedAt:new Date(now).toISOString(),
+        expiresAt:new Date(expiresMs).toISOString(),
+        expiresAtMs:expiresMs,
+        initiatedBy:"authenticated-admin"
+      };
+      try{
+        // No KV TTL: leaving a stale on-record in place ensures that it
+        // expires logically to OFF even when MODE=enforce elsewhere.
+        await kv.put(ENFORCEMENT_KEY,JSON.stringify(record));
+        return json(200,{
+          controlSaved:true,
+          enabled:true,
+          expiresAt:record.expiresAt,
+          edgeVerified:false,
+          routeVerified:false,
+          message:"Policy enforcement activated for up to 1h in KV; Edge routing is not yet verified."
+        });
+      }catch{return json(503,{error:"ENFORCEMENT_WRITE_FAILED"});}
+    }
+    // Emergency OFF is deliberately easier than ON, and persists through
+    // expiry or deployment changes until an admin explicitly turns it on.
+    try{
+      await kv.put(ENFORCEMENT_KEY,JSON.stringify({
+        enabled:false,updatedAt:new Date().toISOString(),
+        initiatedBy:"authenticated-admin"
+      }));
+      return json(200,{
+        controlSaved:true,enabled:false,edgeVerified:false,
+        message:"Policy OFF saved. KV propagation may take time; independent Cloudflare WAF rules are unaffected."
+      });
+    }catch{return json(503,{error:"ENFORCEMENT_WRITE_FAILED"});}
+  }
   if(endpoint==="add"){
     if(input.confirmSharedImpact!==true)return json(400,{error:"CONFIRM_SHARED_IMPACT"});
     if(!Number.isInteger(input.hours)||input.hours<1||input.hours>12)return json(400,{error:"TTL_MUST_BE_1_TO_12_HOURS"});
