@@ -149,3 +149,27 @@ See src/index.js, src/policy.js, test/policy.test.js and routes.example.jsonc.
 The policy Worker intentionally has **no Custom Domains or zone Routes**. Attaching it directly to an apex hostname would replace an existing application origin. The existing Edge Worker owns the HTTP routes and delegates only the IP decision via the private Cloudflare Service Binding. A policy result of HTTP 204 means continue normal origin handling. HTTP 403 with `X-School-Policy: blocked` means block; unexpected responses and transient service-binding failures fail open to protect site availability.
 
 Ensure Cloudflare runs both Workers in the **same account**, and that the existing Edge Worker has a Service Binding named `SCHOOL_POLICY` pointing to service `website-block-by-school-powiis`. The Edge Worker's `wrangler.toml` is the source of truth for this binding and for the domain Routes. Do not add separate routes for the policy Worker. The existing Edge Worker adds `.si` routes to the five original zones, resulting in seven zone configurations. DNS must be proxied to Cloudflare for the routes to take effect.
+
+
+## Public student reporting at `/block-ip`
+
+**Public URL:** https://website-block-by-school-powiis.ongyuze1401.workers.dev/block-ip
+
+- `GET /` redirects to `/block-ip`. `GET /block-ip` displays a multilingual student-facing explanation and **does not record an IP**.
+- The student must be on a network they are authorized to use, read that a shared IP may later be restricted for other people, and **explicitly consent** to the opt-in submission.
+- `POST /block-ip` takes only `{"consent":true,"schoolWifiConfirmed":true}` in JSON. The IP comes from the Cloudflare-set `CF-Connecting-IP` header, never from client body/query/X-Forwarded-For. The reported Wi-Fi connection is a **self-declaration, not proof of school affiliation**.
+- KV key is `student-report:<public IPv4>`, value contains only IP, first-seen time, source and unverified review state. KV TTL is **72 hours**.
+- Multiple reports from the same shared egress IP do not create duplicate writes or extend TTL.
+- No public route can list KV candidates, create `blocked:` keys, enable enforcement, or invoke Cloudflare APIs. A report is **NOT a block**, and `MODE=observe` remains the default.
+- In Cloudflare → KV → namespace `website-block-by-school-powiis-school-ip-kv`, filter keys by `student-report:` to review submitted candidates. Reverify IP ownership/accuracy independently before considering a separate manual restricted-access action; do not assume the school's ownership from visitor claims.
+- The Worker must be deployed with the latest GitHub code before the webpage becomes available. A GitHub commit alone is not proof the Cloudflare production Worker has been updated.
+- This page is **not official POWIIS school infrastructure**, does not request students' names, passwords or device identifiers, and informs visitors that their IP/time may be considered for future shared-network site access restrictions.
+
+### Test
+
+```bash
+npm install
+node --test test/student-report.test.js
+npm test
+```
+
