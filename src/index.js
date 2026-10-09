@@ -1,3 +1,4 @@
+import { studentIpReport } from "./student-report.js";
 import { schoolGuard, coveredHost, validIPv4 } from "./policy.js";
 
 // The public workers.dev address only serves diagnostics.
@@ -27,6 +28,22 @@ export default {
           }
         );
       }
+      if (url.pathname === "/block-ip") {
+        // Consent-based reporting, NOT a public write to the blocklist.
+        return studentIpReport(request, env, url);
+      }
+
+      if (request.method === "GET" && url.pathname === "/") {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": "/block-ip",
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex, nofollow"
+          }
+        });
+      }
+
       return new Response("Standalone Worker: use /health", {
         status: 404,
         headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
