@@ -1,5 +1,7 @@
+import { adminApi } from "./admin-api.js";
+import { adminPage } from "./admin-page.js";
 import { studentIpReport, ipStatus } from "./student-report.js";
-import { schoolGuard, coveredHost, validIPv4 } from "./policy.js";
+import { schoolGuard, coveredHost, normalizePolicyIp } from "./policy.js";
 
 // The public workers.dev address only serves diagnostics.
 // Real traffic reaches this Worker through a Service Binding from
@@ -9,6 +11,16 @@ export default {
     const url = new URL(request.url);
 
     if (url.hostname.endsWith(".workers.dev")) {
+      if (
+        url.hostname === "website-block-by-school-powiis.ongyuze1401.workers.dev" &&
+        (url.pathname === "/admin/ip" ||
+         url.pathname === "/admin/ip/app.js" ||
+         url.pathname.startsWith("/admin/ip/api/"))
+      ) {
+        return url.pathname.startsWith("/admin/ip/api/")
+          ? adminApi(request, env, url)
+          : adminPage(request, url);
+      }
       if (request.method === "GET" && url.pathname === "/health") {
         return new Response(
           JSON.stringify({
@@ -59,7 +71,7 @@ export default {
     // incoming request, rather than passing an arbitrary browser-supplied
     // X-Vynalth-Policy-Client-IP header.
     const ip = request.headers.get("X-Vynalth-Policy-Client-IP");
-    if (!coveredHost(url.hostname) || !validIPv4(ip)) {
+    if (!coveredHost(url.hostname) || !normalizePolicyIp(ip)) {
       return new Response(null, { status: 204, headers: { "X-School-Policy": "allow" } });
     }
 
