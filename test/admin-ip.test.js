@@ -208,3 +208,98 @@ test("internal policy returns 403 only when enforce and manually listed IPv6",as
   assert.equal(denied.status,403);
   assert.equal(denied.headers.get("X-School-Policy"),"blocked");
 });
+
+
+test("admin enforcement is protected by login, CSRF, same-origin and double confirmation",async()=>{
+  const env=envFactory();
+  assert.equal((await send(env,"/admin/ip/api/enforcement")).status,403);
+  assert.equal((await send(env,"/admin/ip/api/enforcement","POST",{enabled:true})).status,403);
+  const s=await login(env),headers=authorizedHeaders(s);
+  assert.equal((await send(env,"/admin/ip/api/enforcement","POST",{
+    enabled:true,confirmSharedIpImpact:true,confirmEdgePrerequisites:true,confirmationText:"ENABLE"
+  },{Cookie:s.cookie})).status,403);
+  assert.equal((await send(env,"/admin/ip/api/enforcement","POST",{
+    enabled:true,confirmationText:"ENABLE"
+  },headers)).status,400);
+  assert.equal((await send(env,"/admin/ip/api/enforcement","POST",{
+    enabled:true,confirmSharedIpImpact:true,confirmEdgePrerequisites:true,
+    confirmationText:"enable"
+  },headers)).status,400);
+  assert.equal(env.SCHOOL_IP_KV.entries.has("policy:runtime-enforcement-v1"),false);
+});
+
+test("admin can turn policy ON, it blocks only listed IPs in observe mode, then OFF",async()=>{
+  const env=envFactory("observe");
+  const s=await login(env),headers=authorizedHeaders(s);
+  const r=await send(env,"/admin/ip/api/enforcement","POST",{
+    enabled:true,confirmSharedIpImpact:true,
+    confirmEdgePrerequisites:true,confirmationText:"ENABLE"
+  },headers);
+  assert.equal(r.status,200);
+  const status=await r.json();
+  assert.equal(status.enabled,true);
+  assert.equal(status.edgeVerified,false);
+  assert.ok(new Date(status.expiresAt).getTime()>Date.now());
+  const view=await send(env,"/admin/ip/api/enforcement","GET",undefined,headers);
+  assert.equal((await view.json()).enabled,true);
+  const request=new Request("https://vyncuslim.com/",{headers:{
+    "X-Vynalth-Policy-Client-IP":IP
+  }});
+  const context={waitUntil(){}};
+  // The runtime toggle alone must not block an IP that is NOT explicitly listed.
+  assert.equal((await worker.fetch(request,env,context)).status,204);
+  await env.SCHOOL_IP_KV.put("blocked:"+IP,"manual",{expirationTtl:3600});
+  const denied=await worker.fetch(request,env,context);
+  assert.equal(denied.status,403);
+  assert.equal(denied.headers.get("X-School-Policy"),"blocked");
+  const off=await send(env,"/admin/ip/api/enforcement","POST",{enabled:false},headers);
+  assert.equal(off.status,200);
+  assert.equal((await worker.fetch(request,env,context)).status,204);
+  assert.equal(env.SCHOOL_IP_KV.entries.has("blocked:"+IP),true);
+});
+
+test("policy runtime activation expires logically within an hour and stays OFF",async()=>{
+  const env=envFactory("observe");
+  const s=await login(env),h=authorizedHeaders(s);
+  await send(env,"/admin/ip/api/enforcement","POST",{
+    enabled:true,confirmSharedIpImpact:true,confirmEdgePrerequisites:true,
+    confirmationText:"ENABLE"
+  },h);
+  const key="policy:runtime-enforcement-v1";
+  const data=JSON.parse(env.SCHOOL_IP_KV.entries.get(key).value);
+  assert.ok(data.expiresAtMs-Date.now()<=3600000);
+  await env.SCHOOL_IP_KV.put(key,JSON.stringify({...data,expiresAtMs:Date.now()-1000}));
+  const state=await send(env,"/admin/ip/api/enforcement","GET",undefined,h);
+  const reported=await state.json();
+  assert.equal(reported.enabled,false);
+  assert.equal(reported.source,"expired");
+  await env.SCHOOL_IP_KV.put("blocked:"+IP,"manual",{expirationTtl:3600});
+  const edge=new Request("https://vyncuslim.com/",{
+    headers:{"X-Vynalth-Policy-Client-IP":IP}
+  });
+  assert.equal((await worker.fetch(edge,env,{waitUntil(){}})).status,204);
+});
+
+test("emergency OFF overrides a legacy MODE=enforce flag",async()=>{
+  const env=envFactory("enforce");
+  const s=await login(env),h=authorizedHeaders(s);
+  await env.SCHOOL_IP_KV.put("blocked:"+IP,"manual",{expirationTtl:3600});
+  const edge=new Request("https://vyncuslim.com/",{
+    headers:{"X-Vynalth-Policy-Client-IP":IP}
+  });
+  assert.equal((await worker.fetch(edge,env,{waitUntil(){}})).status,403);
+  assert.equal((await send(env,"/admin/ip/api/enforcement","POST",{enabled:false},h)).status,200);
+  assert.equal((await worker.fetch(edge,env,{waitUntil(){}})).status,204);
+});
+
+test("admin screen exposes ON, emergency OFF and status refresh controls",async()=>{
+  const env=envFactory();
+  const page=await (await send(env,"/admin/ip")).text();
+  assert.match(page,/enableEnforcement/);
+  assert.match(page,/disableEnforcement/);
+  assert.match(page,/refreshEnforcement/);
+  assert.match(page,/id="enableWord"/);
+  const script=await (await send(env,"/admin/ip/app.js")).text();
+  assert.match(script,/enforcementStatus/);
+  assert.match(script,/confirmEdgePrerequisites/);
+});
