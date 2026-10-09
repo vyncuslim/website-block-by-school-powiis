@@ -2,7 +2,7 @@
 
 Cloudflare Worker + Workers KV for managing IP-based access to **seven domains** in one Cloudflare account.
 
-> **Status: not deployed. Default mode: observe.** IP observations do not prove school membership. Do not block an entire ISP/ASN or treat a shared public IP as a personal identity.
+> **Deployment depends on Cloudflare Builds. No website routes included; default mode: observe.** IP observations do not prove school membership. Do not block an entire ISP/ASN or treat a shared public IP as a personal identity.
 
 ## Protected domains
 
@@ -27,37 +27,35 @@ The code recognizes apex hosts and their subdomains **if their Cloudflare routes
 
 **Important:** No automatic block is created for any candidate IP. Source IP cannot establish that a person is a school student or teacher. Shared or changing NAT addresses can misidentify people.
 
-## Setup (Windows PowerShell / any shell)
+## Cloudflare Git integration (recommended)
 
-1. Install Node.js 22+ and sign into the **correct Cloudflare account** using Wrangler:
+The Worker registered in Cloudflare is **website-block-by-school-powiis**. The name in wrangler.jsonc **must exactly match** this Cloudflare Worker; a mismatch fails GitHub-connected Workers Builds.
+
+**As of the deploy configuration fix:** wrangler.jsonc has \`kv_namespaces: [{ "binding": "SCHOOL_IP_KV" }]\` (no placeholder ID). Recent Wrangler versions support automatic KV provisioning. On a successful dashboard-triggered Git deployment, Cloudflare can create and bind the KV namespace for this Worker. If a namespace already exists and you prefer to reuse it, place its actual namespace ID in the configuration instead.
+
+1. In Cloudflare Workers & Pages → website-block-by-school-powiis → **Deployments**, look for the build triggered by the latest GitHub commit. Build settings: no build command required, deploy command \`npx wrangler deploy\`, root directory \`/\`.
+2. After a successful deploy, check **Settings → Bindings** for the \`SCHOOL_IP_KV\` KV Namespace binding, and check **Storage & databases → KV** for the created namespace. If the build fails again, get the log from the lines **after** the \`wrangler\` banner; the beginning alone is not the error.
+3. Cloudflare Git builds provision KV automatically, but the generated namespace ID is **not automatically committed back to GitHub**. Copy the real ID from the dashboard if you want to pin it in wrangler.jsonc for repeatable CLI maintenance. An ID is an identifier, **not an API credential**.
+4. Do not attach live routes to this Worker yet. The current project has an existing \`vynalth-cloudflare-edge\` Worker for some/all domains, and a route collision could override it. A successful deployment only makes the new standalone Worker available at its workers.dev address. It does **not** make all seven domains use this code.
+
+### Local development (optional)
 
 ~~~sh
 npm install
-npx wrangler login
-~~~
-
-2. Create a KV namespace for the Worker:
-
-~~~sh
-npx wrangler kv namespace create SCHOOL_IP_KV
-~~~
-
-3. Edit wrangler.jsonc, replacing REPLACE_WITH_REAL_KV_NAMESPACE_ID with the namespace ID provided by Wrangler. Do not enter API tokens or secrets into GitHub. A KV namespace ID itself is not a secret.
-
-4. Test locally:
-
-~~~sh
 npm test
 npx wrangler dev
 ~~~
 
-5. Deploy the standalone Worker only (no zone routes are automatically activated):
+For local command-line deployment from the correct Cloudflare account:
 
 ~~~sh
+npx wrangler login
 npx wrangler deploy
 ~~~
 
-6. **Important if an existing Worker already handles your sites:** you previously have vynalth-cloudflare-edge. Do not attach a second Worker to its exact same route, which can replace/conflict with existing route handling. Instead merge/import the schoolGuard() function into your existing edge Worker's fetch handler, give THAT Worker the SCHOOL_IP_KV binding, and wrap its existing logic:
+### Integrate without replacing the existing edge Worker
+
+The exported \`schoolGuard()\` can be composed into your existing \`vynalth-cloudflare-edge\` entrypoint. This is the **recommended approach** if that Worker already owns a hostname/route; do not attach a competing Worker to the same route.
 
 ~~~js
 import { schoolGuard } from "./school-policy.js";
@@ -72,9 +70,9 @@ export default {
 };
 ~~~
 
-Copy src/policy.js as school-policy.js in the existing Worker project if using this integration. Replace existingHandler with your actual existing request handler. Preserve existing authentication, routing, protection and logs. Do not deploy this illustrative snippet without adapting it.
+Copy src/policy.js as school-policy.js in the existing Worker project. Replace existingHandler with your actual existing request handler, preserve all existing security and routing behavior, and bind **SCHOOL_IP_KV** on THAT Worker as well if you want it to use the same KV. The example is illustrative, not ready to deploy without integration.
 
-7. If running standalone where there is **no** competing Worker route, configure routes intentionally for the desired hosts under Workers & Pages → your Worker → Settings → Domains & Routes. The optional routes.example.jsonc file illustrates all seven domains; review the subdomain impact first. Requests to unproxied DNS-only hostnames will not reach a Cloudflare route Worker.
+When no other Worker handles a route, the example in routes.example.jsonc illustrates the targeted hosts; review every subdomain before attaching anything. Unproxied DNS-only hostnames will not run Cloudflare route Workers.
 
 ## KV keys / manually blocking
 
@@ -84,23 +82,32 @@ Observed candidate IPs are automatically stored only after a root-page visit:
 - observed:60.51.219.195
 - observed:60.51.219.225
 
-View observations:
+### Manage KV in Cloudflare dashboard (easiest)
+
+Open Workers & Pages → website-block-by-school-powiis → **Settings → Bindings** and follow its KV namespace to view keys. This avoids needing the namespace ID in your local config.
+
+### Manage KV using Wrangler CLI
+
+**First obtain the real KV namespace ID from Cloudflare dashboard.** In dashboard-based Git deployments, auto-created KV IDs are not synchronized back to GitHub. Replace \`<REAL_KV_NAMESPACE_ID>\` in commands below **locally**; do not use a placeholder value.
+
+List observations:
 
 ~~~sh
-npx wrangler kv key list --binding SCHOOL_IP_KV --prefix "observed:" --remote
+npx wrangler kv key list --namespace-id <REAL_KV_NAMESPACE_ID> --prefix "observed:" --remote
 ~~~
 
-Once you have **independently confirmed** an address should be blocked and accepted the collateral impact, add it explicitly:
+Only after verifying ownership/impact, manually add a block record:
 
 ~~~sh
-npx wrangler kv key put "blocked:60.49.64.83" "manual-review" --binding SCHOOL_IP_KV --remote
+npx wrangler kv key put "blocked:60.49.64.83" "manual-review" --namespace-id <REAL_KV_NAMESPACE_ID> --remote
 ~~~
 
-To remove this manual block:
+Undo a block record:
 
 ~~~sh
-npx wrangler kv key delete "blocked:60.49.64.83" --binding SCHOOL_IP_KV --remote
+npx wrangler kv key delete "blocked:60.49.64.83" --namespace-id <REAL_KV_NAMESPACE_ID> --remote
 ~~~
+
 
 Review the entry and separately change MODE to "enforce" in wrangler.jsonc (or matching existing Worker configuration) and deploy. MODE=observe never blocks, even when a blocked:IP key exists.
 
