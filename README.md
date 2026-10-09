@@ -74,6 +74,15 @@ Copy src/policy.js as school-policy.js in the existing Worker project. Replace e
 
 When no other Worker handles a route, the example in routes.example.jsonc illustrates the targeted hosts; review every subdomain before attaching anything. Unproxied DNS-only hostnames will not run Cloudflare route Workers.
 
+
+## After deployment: verify the Worker
+
+1. Open Cloudflare → Workers & Pages → **website-block-by-school-powiis** → **Deployments** and confirm the latest GitHub commit completed successfully.
+2. Open the Worker's **workers.dev** URL (shown by Cloudflare) and add `/health` to it. A healthy bound deployment returns JSON similar to `{"ok":true,"service":"website-block-by-school-powiis","mode":"observe","kvBound":true}`.
+3. Check **Settings → Bindings** for **SCHOOL_IP_KV** linked to a KV namespace. `kvBound:true` only checks binding availability; it does not prove a successful KV write.
+4. The health endpoint runs on workers.dev and does not write visitor IPs. The candidate IP observation runs only on routed supported hostnames and GET root requests; **no live zone routes are installed automatically**.
+5. **Do not change MODE to enforce before reviewing any manually blocked IPs and confirming the account/route impact.**
+
 ## KV keys / manually blocking
 
 Observed candidate IPs are automatically stored only after a root-page visit:
